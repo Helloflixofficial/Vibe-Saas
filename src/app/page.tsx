@@ -1,5 +1,7 @@
-// import { prisma } from "@/lib/db";
-const Page = async () => {
+import { useTRPC } from "@/trpc/client";
+const Page = () => {
+  const trpc = useTRPC();
+  trpc.hello.queryOptions({ text: "Hello" });
   return (
     <div className="font-bold text-blue-300">
       <h1>hello sire</h1>
