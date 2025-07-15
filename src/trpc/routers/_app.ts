@@ -4,7 +4,7 @@ export const appRouter = createTRPCRouter({
     hello: baseProcedure
         .input(
             z.object({
-                text: z.string(),
+                text: z.number(),
             }),
         )
         .query((opts) => {
@@ -13,5 +13,5 @@ export const appRouter = createTRPCRouter({
             };
         }),
 });
-// export type definition of API
-export type AppRouter = typeof appRouter;
+
+export type AppRouter = typeof appRouter; 
