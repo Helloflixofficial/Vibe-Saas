@@ -15,7 +15,7 @@ export const appRouter = createTRPCRouter({
                     email: input.text
                 }
             })
-
+            return { ok: "success" }
         }),
 
 
@@ -31,6 +31,7 @@ export const appRouter = createTRPCRouter({
                 greeting: `hello ${opts.input.text}`,
             };
         }),
+
 });
 
 export type AppRouter = typeof appRouter; 
