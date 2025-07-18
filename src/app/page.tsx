@@ -1,12 +1,16 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useState } from "react";
 
 const Page = () => {
+  const [value, setValue] = useState("");
   const trpc = useTRPC();
+
   const invoke = useMutation(
     trpc.invoke.mutationOptions({
       onSuccess: () => {
@@ -14,13 +18,20 @@ const Page = () => {
       },
     })
   );
+
   return (
-    <div className="p-4  max-w-7xl max-auto">
+    <div className="p-4 max-w-7xl mx-auto">
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Enter text"
+      />
       <Button
+        className="mt-4"
         disabled={invoke.isPending}
-        onClick={() => invoke.mutate({ text: "sharmaji" })}
+        onClick={() => invoke.mutate({ value })}
       >
-        revoke buuton is here
+        Invoke Button
       </Button>
     </div>
   );
