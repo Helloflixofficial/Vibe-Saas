@@ -1,3 +1,4 @@
+
 import { inngest } from '@/inngest/client';
 import { z } from 'zod';
 import { baseProcedure, createTRPCRouter } from '../init';
@@ -9,29 +10,27 @@ export const appRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input }) => {
-            await inngest.send({
-                name: "test/hello.world",
-                data: {
-                    value: input.value
-                }
-            })
-            return { ok: "success" }
+            console.log("🔥 Sending event to Inngest with value:", input.value);
+
+            try {
+                const result = await inngest.send({
+                    name: "test/hello.world",
+                    data: {
+                        value: input.value
+                    }
+                });
+
+                console.log("✅ Inngest send result:", result);
+
+                return {
+                    message: `✅ Event sent with value: "${input.value}"`,
+                    inngestResult: result
+                };
+            } catch (error) {
+                console.error("❌ Error sending to Inngest:", error);
+                throw error;
+            }
         }),
-
-
-
-    createAi: baseProcedure
-        .input(
-            z.object({
-                text: z.string(),
-            }),
-        )
-        .query((opts) => {
-            return {
-                greeting: `hello ${opts.input.text}`,
-            };
-        }),
-
 });
 
-export type AppRouter = typeof appRouter; 
+export type AppRouter = typeof appRouter;
