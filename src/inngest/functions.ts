@@ -39,7 +39,7 @@ export const helloWorldGemini = inngest.createFunction(
             return `https://${host}`;
         })
 
-        return { output: codeAgent };
+        return { output: codeAgent, sandboxUrl };
     }
 );
 
