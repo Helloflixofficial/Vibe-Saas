@@ -15,38 +15,33 @@ export const helloWorldGemini = inngest.createFunction(
             const sandbox = await Sandbox.create("vibe-app-demo-2");
             return sandbox.sandboxId;
         });
+
         const agentTools = [
             createTool({
                 name: "terminal",
-                description: "Execute terminal commands in the sandbox environment",
-                parameters: z.object({
-                    command: z.string().describe("The terminal command to execute"),
-                }),
-                handler: async (
-                    { command }: { command: string },
-                    { step }: { step: any }
-                ) => {
+                description: "Run terminal commands in sandbox",
+                parameters: z.object({ command: z.string() }),
+                handler: async ({ command }, { step }) => {
                     return await step?.run("terminal-execution", async () => {
                         const buffers = { stdout: "", stderr: "" };
                         try {
                             const sandbox = await getSandbox(sandboxId);
                             const result = await sandbox.commands.run(command, {
-                                onStdout: (data: string) => { buffers.stdout += data; },
-                                onStderr: (data: string) => { buffers.stderr += data; }
+                                onStdout: (d) => (buffers.stdout += d),
+                                onStderr: (d) => (buffers.stderr += d),
                             });
                             return {
                                 success: true,
                                 stdout: result.stdout || buffers.stdout,
                                 stderr: buffers.stderr,
-                                exitCode: result.exitCode
+                                exitCode: result.exitCode,
                             };
                         } catch (e) {
-                            console.error(`Command execution failed: ${e}`);
                             return {
                                 success: false,
-                                error: `Command execution failed: ${e}`,
+                                error: `${e}`,
                                 stdout: buffers.stdout,
-                                stderr: buffers.stderr
+                                stderr: buffers.stderr,
                             };
                         }
                     });
@@ -55,38 +50,23 @@ export const helloWorldGemini = inngest.createFunction(
 
             createTool({
                 name: "createOrUpdateFiles",
-                description: "Create new files or update existing files in the sandbox",
+                description: "Create/update files in sandbox",
                 parameters: z.object({
-                    filePath: z.string().describe("The path where the file should be created or updated"),
-                    content: z.string().describe("The content to write to the file"),
-                    append: z.boolean().optional().describe("Whether to append to existing file (default: false)")
+                    filePath: z.string(),
+                    content: z.string(),
+                    append: z.boolean().optional(),
                 }),
-                handler: async (
-                    { filePath, content, append = false }: { filePath: string; content: string; append?: boolean },
-                    { step }: { step: any }
-                ) => {
+                handler: async ({ filePath, content, append = false }, { step }) => {
                     return await step?.run("file-write", async () => {
                         try {
                             const sandbox = await getSandbox(sandboxId);
-
-                            if (append) {
-                                await sandbox.files.write(filePath, content, { append: true });
-                            } else {
-                                await sandbox.files.write(filePath, content);
-                            }
-
+                            await sandbox.files.write(filePath, content, { append });
                             return {
                                 success: true,
-                                message: `File ${append ? 'updated' : 'created'} successfully: ${filePath}`,
-                                filePath
+                                message: `${append ? "Appended" : "Created"}: ${filePath}`,
                             };
                         } catch (e) {
-                            console.error(`File operation failed: ${e}`);
-                            return {
-                                success: false,
-                                error: `File operation failed: ${e}`,
-                                filePath
-                            };
+                            return { success: false, error: `${e}` };
                         }
                     });
                 },
@@ -94,113 +74,75 @@ export const helloWorldGemini = inngest.createFunction(
 
             createTool({
                 name: "readFiles",
-                description: "Read the content of files from the sandbox",
-                parameters: z.object({
-                    filePaths: z.array(z.string()).describe("Array of file paths to read"),
-                }),
-                handler: async (
-                    { filePaths }: { filePaths: string[] },
-                    { step }: { step: any }
-                ) => {
+                description: "Read multiple files",
+                parameters: z.object({ filePaths: z.array(z.string()) }),
+                handler: async ({ filePaths }, { step }) => {
                     return await step?.run("file-read", async () => {
                         try {
                             const sandbox = await getSandbox(sandboxId);
-                            const results = [];
-
-                            for (const filePath of filePaths) {
-                                try {
-                                    const content = await sandbox.files.read(filePath);
-                                    results.push({
-                                        filePath,
-                                        content,
-                                        success: true
-                                    });
-                                } catch (e) {
-                                    results.push({
-                                        filePath,
-                                        error: `Failed to read file: ${e}`,
-                                        success: false
-                                    });
-                                }
-                            }
-
-                            return {
-                                success: true,
-                                files: results
-                            };
+                            const files = await Promise.all(
+                                filePaths.map(async (path) => {
+                                    try {
+                                        const content = await sandbox.files.read(path);
+                                        return { filePath: path, content };
+                                    } catch (err) {
+                                        return { filePath: path, error: `${err}` };
+                                    }
+                                })
+                            );
+                            return { success: true, files };
                         } catch (e) {
-                            console.error(`File read operation failed: ${e}`);
-                            return {
-                                success: false,
-                                error: `File read operation failed: ${e}`
-                            };
+                            return { success: false, error: `${e}` };
                         }
                     });
                 },
-            })
+            }),
         ];
 
-        const codeAgent = await step.run("codeAgent", async () => {
-            const systemInstruction = `You are an expert React.js developer. You write readable and clean code`;
+        const output = await step.run("codeAgent", async () => {
+            const userText = event.data?.value ?? "Build a React component.";
+            const prompt = `
+You are an expert React.js developer. Write clean, readable code.
 
-            const userText = event.data.value;
-            const model = genAI.getGenerativeModel({
-                model: "gemini‑2.5‑pro",
-                systemInstruction
-            });
+User: "${userText}"
 
-            const prompt = `Please help me with the following development task: "${userText}"
-            
-Use the available tools as needed to accomplish this task. If you need to create files, run commands, or read existing files, use the appropriate tools.`;
-
-            console.log("🚀 Running Gemini with prompt:", prompt);
+You can use tools like terminal, readFiles, and createOrUpdateFiles.
+`.trim();
 
             try {
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
                 const result = await model.generateContent(prompt);
-                const response = result.response;
-                let responseText = response.text();
-                if (responseText.toLowerCase().includes('terminal') ||
-                    responseText.toLowerCase().includes('command')) {
-                    const commandMatch = responseText.match(/`([^`]+)`/);
-                    if (commandMatch) {
-                        const command = commandMatch[1];
-                        console.log(`🔧 Executing suggested command: ${command}`);
+                let text = result.response.text();
 
-                        // Execute the command using our tool
-                        const terminalResult = await agentTools[0].handler(
-                            { command },
-                            { step }
-                        );
-
-                        responseText += `\n\n📋 Command execution result:\n${JSON.stringify(terminalResult, null, 2)}`;
-                    }
+                const match = text.match(/`([^`]+)`/);
+                if (match) {
+                    const terminalResult = await agentTools[0].handler({ command: match[1] }, { step });
+                    text += `\n\n🧪 Terminal Result:\n${JSON.stringify(terminalResult, null, 2)}`;
                 }
 
-                return responseText;
-
+                return text;
             } catch (error) {
-                console.error("❌ Gemini API error:", error);
-                return `Error generating response: ${error}`;
+                return `❌ Error: ${error}`;
             }
         });
 
-        console.log("✅ Gemini agent output:", codeAgent);
-
         const sandboxUrl = await step.run("get-sandbox-url", async () => {
-            const sandbox = await getSandbox(sandboxId);
-            const host = sandbox.getHost(3000);
-            return `https://${host}`;
+            try {
+                const sandbox = await getSandbox(sandboxId);
+                return `https://${sandbox.getHost(3000)}`;
+            } catch {
+                return "⚠️ Sandbox not yet ready.";
+            }
         });
 
         return {
-            output: codeAgent,
+            output,
             sandboxUrl,
             sandboxId,
-            availableTools: agentTools.map(tool => ({
-                name: tool.name,
-                description: tool.description
-            }))
+            toolsAvailable: agentTools.map((t) => ({
+                name: t.name,
+                description: t.description,
+            })),
         };
     }
 );
-
