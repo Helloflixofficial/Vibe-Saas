@@ -1,8 +1,9 @@
 
 import { inngest } from "./client";
-import { createAgent, gemini } from "@inngest/agent-kit";
+import { createAgent, createTool, gemini } from "@inngest/agent-kit";
 import Sandbox from "@e2b/code-interpreter";
 import { getSandbox } from "./utils";
+import z from "zod";
 export const helloWorldGemini = inngest.createFunction(
     { id: "hello-world-gemini" },
     { event: "test/hello.world" },
@@ -19,8 +20,40 @@ export const helloWorldGemini = inngest.createFunction(
             }),
             name: "Gemini Dev Assistant",
             system: "You're a helpful AI assistant that helps with development tasks.",
-        });
+            tools: [
+                createTool({
+                    name: "Terminal",
+                    description: "use the terminal to run the cummands here",
+                    parameters: z.object({
+                        Command: z.string(),
+                    }),
+                    handler: async ({ command }, { step }) => {
+                        return await step?.run("terminal", async () => {
+                            const buffer = { stdout: "", stderr: "" };
+                            try {
+                                const sandbox = await getSandbox(sandboxId);
+                                const result = await sandbox.commands.run(command, {
+                                    onStdout: (data: string) => {
+                                        buffer.stdout += data;
+                                    },
+                                    onStderr: (data: string) => {
+                                        buffer.stderr += data;
+                                    },
+                                });
+                                return result.stdout;
+                            } catch (e) {
+                                console.error(`Command faild ${e} \nstdout: ${buffer.stdout}\nstderror: ${buffer.stderr}`,);
+                                return `Command faild ${e} \nstdout: ${buffer.stdout}\nstderror: ${buffer.stderr}`;
 
+                            }
+
+                        })
+
+                    }
+                })
+            ]
+
+        });
 
 
         const { output } = await codeAgent.run(
